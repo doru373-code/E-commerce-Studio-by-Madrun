@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { getBackgroundStyles, getSceneOptions, getPoseOptions, HAIR_COLOR_OPTIONS, getHairstyleOptions, SKIN_TONE_OPTIONS } from './constants';
-import { BackgroundStyle, GenerationState, GenerationMode, Gender, AspectRatio, Scene, Pose, HairColor, Hairstyle, SkinTone, CharacterSource, Discount, WhitelistedUser, AdminSubView, User } from './types';
+import { BackgroundStyle, GenerationState, GenerationMode, Gender, AspectRatio, Scene, Pose, HairColor, Hairstyle, SkinTone, CharacterSource, Discount, WhitelistedUser, AdminSubView, User, PaymentProcessor } from './types';
 import { generateProductPhoto } from './services/geminiService';
 import Button from './components/Button';
 import StyleCard from './components/StyleCard';
@@ -21,8 +21,9 @@ const DEMO_ACCOUNTS = [
 ];
 
 const App: React.FC = () => {
-  // Localization State
+  // Localization & Theme State
   const [lang, setLang] = useState<Language>('en');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const t = translations[lang];
 
   // Auth & View State
@@ -36,6 +37,7 @@ const App: React.FC = () => {
   const [adminSubView, setAdminSubView] = useState<AdminSubView>('overview');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [activeProcessor, setActiveProcessor] = useState<PaymentProcessor>('stripe');
 
   // Configuration State
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -71,6 +73,12 @@ const App: React.FC = () => {
     const savedPayments = localStorage.getItem('madrun_payments');
     if (savedPayments) setPayments(JSON.parse(savedPayments));
 
+    const savedProcessor = localStorage.getItem('madrun_processor');
+    if (savedProcessor) setActiveProcessor(savedProcessor as PaymentProcessor);
+
+    const savedTheme = localStorage.getItem('madrun_theme');
+    if (savedTheme) setTheme(savedTheme as 'light' | 'dark');
+
     const savedUsersRaw = localStorage.getItem('madrun_registered_users');
     let usersList: User[] = savedUsersRaw ? JSON.parse(savedUsersRaw) : [];
     
@@ -92,6 +100,17 @@ const App: React.FC = () => {
     localStorage.setItem('madrun_registered_users', JSON.stringify(usersList));
     setRegisteredUsers(usersList);
   }, []);
+
+  const toggleTheme = () => {
+    const next = theme === 'light' ? 'dark' : 'light';
+    setTheme(next);
+    localStorage.setItem('madrun_theme', next);
+  };
+
+  const updateProcessor = (p: PaymentProcessor) => {
+    setActiveProcessor(p);
+    localStorage.setItem('madrun_processor', p);
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string | null) => void) => {
     const file = e.target.files?.[0];
@@ -164,19 +183,20 @@ const App: React.FC = () => {
     localStorage.removeItem('madrun_current_user');
   };
 
-  const simulateStripeCheckout = async () => {
+  const simulateCheckout = async () => {
     setIsProcessingPayment(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    const delay = activeProcessor === 'paypal' ? 3000 : 2000;
+    await new Promise(resolve => setTimeout(resolve, delay));
     
     if (currentUser) {
       const updatedUser: User = { 
         ...currentUser, 
         subscriptionStatus: 'active',
-        stripeCustomerId: 'cus_' + Math.random().toString(36).substr(2, 9)
+        stripeCustomerId: (activeProcessor === 'stripe' ? 'cus_' : 'pp_') + Math.random().toString(36).substr(2, 9)
       };
       
       const newPayment = {
-        id: 'pi_' + Math.random().toString(36).substr(2, 9),
+        id: (activeProcessor === 'stripe' ? 'pi_' : 'txn_') + Math.random().toString(36).substr(2, 9),
         user: currentUser.email,
         amount: 1900,
         date: new Date().toISOString(),
@@ -248,11 +268,10 @@ const App: React.FC = () => {
     }
   };
 
-  // UI Part
+  // UI Component
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#FDFDFF] flex flex-col items-center justify-center p-8 selection:bg-indigo-100">
-        {/* Lang Toggle for Auth Screen */}
         <div className="absolute top-12 right-12 flex bg-slate-100 p-2 rounded-full shadow-inner">
           <button onClick={() => setLang('en')} className={`px-6 py-2 rounded-full font-black text-xs transition-all ${lang === 'en' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}>EN</button>
           <button onClick={() => setLang('fr')} className={`px-6 py-2 rounded-full font-black text-xs transition-all ${lang === 'fr' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}>FR</button>
@@ -327,8 +346,8 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFDFF] text-slate-900 selection:bg-indigo-100">
-      <nav className="bg-white/90 backdrop-blur-2xl border-b border-slate-100 sticky top-0 z-50">
+    <div className={`min-h-screen transition-colors duration-500 selection:bg-indigo-100 ${theme === 'dark' ? 'bg-[#0A0B10] text-slate-100' : 'bg-[#FDFDFF] text-slate-900'}`}>
+      <nav className={`backdrop-blur-2xl border-b transition-colors duration-500 sticky top-0 z-50 ${theme === 'dark' ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-slate-100'}`}>
         <div className="max-w-[1700px] mx-auto px-12 h-28 flex items-center justify-between">
           <div className="flex items-center gap-6 cursor-pointer group" onClick={() => setView('studio')}>
             <div className="bg-indigo-600 w-16 h-16 flex items-center justify-center rounded-[1.75rem] shadow-2xl shadow-indigo-100 group-hover:scale-110 transition-transform">
@@ -336,27 +355,35 @@ const App: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-black tracking-tighter hidden md:block">E-commerce Studio by Madrun</h1>
+            <h1 className="text-3xl font-black tracking-tighter hidden md:block">E-commerce Studio</h1>
           </div>
 
           <div className="flex items-center gap-6">
-            {/* Lang Toggle In Nav */}
-            <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100 mr-4">
-              <button onClick={() => setLang('en')} className={`px-4 py-2 rounded-xl font-black text-[10px] tracking-widest transition-all ${lang === 'en' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>EN</button>
-              <button onClick={() => setLang('fr')} className={`px-4 py-2 rounded-xl font-black text-[10px] tracking-widest transition-all ${lang === 'fr' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>FR</button>
+            {/* Theme Toggle */}
+            <button 
+              onClick={toggleTheme}
+              className={`p-3 rounded-xl transition-all ${theme === 'dark' ? 'bg-slate-800 text-amber-400 hover:bg-slate-700' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+              title={theme === 'dark' ? t.nav.light : t.nav.dark}
+            >
+              {theme === 'dark' ? (
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 5a7 7 0 100 14 7 7 0 000-14z" /></svg>
+              ) : (
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+              )}
+            </button>
+
+            {/* Language Toggle */}
+            <div className={`flex p-1.5 rounded-2xl border transition-colors ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+              <button onClick={() => setLang('en')} className={`px-4 py-2 rounded-xl font-black text-[10px] tracking-widest transition-all ${lang === 'en' ? 'bg-indigo-600 shadow-sm text-white' : 'text-slate-400'}`}>EN</button>
+              <button onClick={() => setLang('fr')} className={`px-4 py-2 rounded-xl font-black text-[10px] tracking-widest transition-all ${lang === 'fr' ? 'bg-indigo-600 shadow-sm text-white' : 'text-slate-400'}`}>FR</button>
             </div>
 
-            <div className="hidden lg:flex items-center gap-4 bg-slate-50 px-6 py-2 rounded-full border border-slate-100">
-              <div className="flex flex-col">
+            <div className={`hidden lg:flex items-center gap-4 px-6 py-2 rounded-full border transition-colors ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+              <div className="flex flex-col text-right">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{t.nav.status}</span>
-                <span className={`text-[10px] font-black uppercase ${currentUser.subscriptionStatus === 'active' ? 'text-green-600' : 'text-orange-500'}`}>
+                <span className={`text-[10px] font-black uppercase ${currentUser.subscriptionStatus === 'active' ? 'text-green-500' : 'text-orange-500'}`}>
                   {currentUser.subscriptionStatus === 'trialing' ? t.nav.trial : t.nav.premium}
                 </span>
-              </div>
-              <div className="w-px h-6 bg-slate-200" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{t.nav.identity}</span>
-                <span className="text-[10px] font-black text-slate-900">{currentUser.email}</span>
               </div>
             </div>
 
@@ -377,7 +404,7 @@ const App: React.FC = () => {
                   {t.nav.upgrade}
                 </button>
               )}
-              <button onClick={handleLogout} className="p-3 bg-slate-50 text-slate-400 hover:text-red-500 rounded-xl transition-all">
+              <button onClick={handleLogout} className={`p-3 rounded-xl transition-all ${theme === 'dark' ? 'bg-slate-800 text-slate-400 hover:text-red-500' : 'bg-slate-50 text-slate-400 hover:text-red-500'}`}>
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M17 16l4-4m0 0l-4-4m4 4H7" /></svg>
               </button>
             </div>
@@ -389,58 +416,99 @@ const App: React.FC = () => {
         {view === 'admin' ? (
           <div className="flex gap-20 animate-in fade-in slide-in-from-bottom-12 duration-1000">
              <aside className="w-96 space-y-4">
-                {(['overview', 'users', 'discounts', 'logs', 'payments'] as const).map((sub) => (
+                {(['overview', 'users', 'discounts', 'logs', 'payments', 'settings'] as const).map((sub) => (
                   <button 
                     key={sub} 
                     onClick={() => setAdminSubView(sub as AdminSubView)} 
-                    className={`w-full flex items-center gap-6 px-10 py-7 rounded-[2.5rem] text-xl font-black transition-all ${adminSubView === sub ? 'bg-indigo-600 text-white shadow-2xl' : 'text-slate-400 hover:bg-white hover:text-indigo-600 border-4 border-transparent'}`}
+                    className={`w-full flex items-center gap-6 px-10 py-7 rounded-[2.5rem] text-xl font-black transition-all ${adminSubView === sub ? 'bg-indigo-600 text-white shadow-2xl' : (theme === 'dark' ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-400 hover:bg-white hover:text-indigo-600 border-4 border-transparent')}`}
                   >
                     <span className="capitalize">{t.admin[sub as keyof typeof t.admin] || sub}</span>
                   </button>
                 ))}
              </aside>
              
-             <div className="flex-1 bg-white rounded-[4rem] p-20 border border-slate-100 shadow-sm min-h-[80vh]">
+             <div className={`flex-1 rounded-[4rem] p-20 border shadow-sm min-h-[80vh] transition-colors ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                 <h2 className="text-7xl font-black mb-20 tracking-tight capitalize">{t.admin.analytics} <span className="text-indigo-600">{t.admin[adminSubView as keyof typeof t.admin] || adminSubView}</span></h2>
                 
                 {adminSubView === 'overview' && (
                   <div className="space-y-20">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                      <div className="bg-slate-50 p-12 rounded-[3.5rem] border border-slate-100">
-                        <p className="text-sm font-black text-slate-400 uppercase tracking-[0.3em] mb-6">{t.admin.liveUsers}</p>
-                        <p className="text-7xl font-black text-slate-900">{registeredUsers.length}</p>
+                      <div className={`p-12 rounded-[3.5rem] border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+                        <p className="text-sm font-black text-slate-500 uppercase tracking-[0.3em] mb-6">{t.admin.liveUsers}</p>
+                        <p className="text-7xl font-black">{registeredUsers.length}</p>
                       </div>
-                      <div className="bg-indigo-50 p-12 rounded-[3.5rem] border border-indigo-100">
+                      <div className={`p-12 rounded-[3.5rem] border ${theme === 'dark' ? 'bg-indigo-900/30 border-indigo-800' : 'bg-indigo-50 border-indigo-100'}`}>
                         <p className="text-sm font-black text-indigo-400 uppercase tracking-[0.3em] mb-6">{t.admin.revenue}</p>
-                        <p className="text-7xl font-black text-indigo-600">
+                        <p className="text-7xl font-black text-indigo-500">
                           ${(payments.reduce((acc, p) => acc + p.amount, 0) / 100).toLocaleString()}
                         </p>
                       </div>
-                      <div className="bg-green-50 p-12 rounded-[3.5rem] border border-green-100">
+                      <div className={`p-12 rounded-[3.5rem] border ${theme === 'dark' ? 'bg-green-900/30 border-green-800' : 'bg-green-50 border-green-100'}`}>
                         <p className="text-sm font-black text-green-400 uppercase tracking-[0.3em] mb-6">{t.admin.generations}</p>
-                        <p className="text-7xl font-black text-green-600">{history.length}</p>
+                        <p className="text-7xl font-black text-green-500">{history.length}</p>
                       </div>
                     </div>
 
-                    <div className="bg-slate-50/50 p-12 rounded-[3.5rem] border border-slate-100 space-y-8">
-                      <h3 className="text-2xl font-black text-slate-900 uppercase tracking-widest">{t.admin.demoCreds}</h3>
+                    <div className={`p-12 rounded-[3.5rem] border space-y-8 ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+                      <h3 className="text-2xl font-black uppercase tracking-widest">{t.admin.demoCreds}</h3>
                       <p className="text-slate-400 font-medium text-lg">{t.admin.demoSub}</p>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {DEMO_ACCOUNTS.map((demo, idx) => (
-                          <div key={idx} className="flex flex-col p-8 bg-white rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
+                          <div key={idx} className={`flex flex-col p-8 rounded-[2rem] border shadow-sm relative overflow-hidden ${theme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-100'}`}>
                             <div className="absolute top-0 right-0 p-4 bg-indigo-600 text-white rounded-bl-2xl font-black text-[10px] tracking-widest uppercase">PRO</div>
                             <div className="space-y-4">
                               <div className="flex flex-col">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Email</span>
-                                <span className="text-base font-bold text-slate-800 break-all">{demo.email}</span>
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Email</span>
+                                <span className="text-base font-bold break-all">{demo.email}</span>
                               </div>
                               <div className="flex flex-col">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Password</span>
-                                <span className="text-base font-bold text-indigo-600 font-mono">{demo.pass}</span>
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Password</span>
+                                <span className="text-base font-bold text-indigo-500 font-mono">{demo.pass}</span>
                               </div>
                             </div>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {adminSubView === 'settings' && (
+                  <div className="space-y-16">
+                    <div className="space-y-6">
+                      <h3 className="text-3xl font-black tracking-tight">{t.admin.gateway}</h3>
+                      <p className="text-xl text-slate-400 font-medium">{t.admin.gatewaySub}</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                      <div 
+                        onClick={() => updateProcessor('stripe')}
+                        className={`p-12 rounded-[3.5rem] border-8 cursor-pointer transition-all duration-500 relative group ${activeProcessor === 'stripe' ? 'border-indigo-600 bg-indigo-50/10' : (theme === 'dark' ? 'border-slate-800 bg-slate-900' : 'border-slate-50 bg-white hover:border-slate-100')}`}
+                      >
+                        <div className="flex items-center justify-between mb-8">
+                           <div className="bg-indigo-600 text-white p-6 rounded-[1.5rem] font-black text-3xl tracking-tighter shadow-xl">S|</div>
+                           {activeProcessor === 'stripe' && (
+                             <div className="bg-indigo-600 text-white rounded-full p-2"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg></div>
+                           )}
+                        </div>
+                        <h4 className="text-3xl font-black mb-4">Stripe</h4>
+                        <p className="text-slate-400 font-medium text-lg leading-relaxed">Fast, secure credit card processing with high-end aesthetic components.</p>
+                      </div>
+
+                      <div 
+                        onClick={() => updateProcessor('paypal')}
+                        className={`p-12 rounded-[3.5rem] border-8 cursor-pointer transition-all duration-500 relative group ${activeProcessor === 'paypal' ? 'border-[#003087] bg-blue-900/10' : (theme === 'dark' ? 'border-slate-800 bg-slate-900' : 'border-slate-50 bg-white hover:border-slate-100')}`}
+                      >
+                        <div className="flex items-center justify-between mb-8">
+                           <div className="bg-[#003087] text-white p-6 rounded-[1.5rem] font-black text-3xl tracking-tighter shadow-xl flex gap-1">
+                              <span className="text-[#009cde]">P</span><span>P</span>
+                           </div>
+                           {activeProcessor === 'paypal' && (
+                             <div className="bg-[#003087] text-white rounded-full p-2"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg></div>
+                           )}
+                        </div>
+                        <h4 className="text-3xl font-black mb-4">PayPal</h4>
+                        <p className="text-slate-400 font-medium text-lg leading-relaxed">Trusted global leader for wallet-based payments and instant checkout.</p>
                       </div>
                     </div>
                   </div>
@@ -452,27 +520,27 @@ const App: React.FC = () => {
             <div className="lg:col-span-5 space-y-24">
               <section className="space-y-12">
                 <div className="space-y-4">
-                  <span className="text-indigo-600 font-black text-2xl tracking-tighter uppercase">{t.studio.step1}</span>
+                  <span className="text-indigo-500 font-black text-2xl tracking-tighter uppercase">{t.studio.step1}</span>
                   <h2 className="text-6xl lg:text-7xl font-black tracking-tighter">{t.studio.subject}</h2>
                 </div>
                 
                 <div className="relative group">
                   {selectedImage ? (
-                    <div className="relative rounded-[4rem] overflow-hidden aspect-square bg-white border-8 border-indigo-50 shadow-[0_50px_100px_-20px_rgba(79,70,229,0.1)] transition-all duration-700 hover:scale-[1.02]">
+                    <div className={`relative rounded-[4rem] overflow-hidden aspect-square border-8 shadow-2xl transition-all duration-700 hover:scale-[1.02] ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-indigo-50'}`}>
                       <img src={selectedImage} alt="Product" className="w-full h-full object-contain p-20" />
-                      <button onClick={() => setSelectedImage(null)} className="absolute top-12 right-12 bg-white/90 hover:bg-white text-slate-900 p-8 rounded-full shadow-2xl transition-all hover:rotate-90">
+                      <button onClick={() => setSelectedImage(null)} className={`absolute top-12 right-12 p-8 rounded-full shadow-2xl transition-all hover:rotate-90 ${theme === 'dark' ? 'bg-slate-800/90 text-slate-100' : 'bg-white/90 text-slate-900'}`}>
                         <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
                     </div>
                   ) : (
-                    <label className="flex flex-col items-center justify-center w-full aspect-square border-8 border-dashed border-slate-100 rounded-[5rem] cursor-pointer bg-white hover:bg-indigo-50/20 hover:border-indigo-200 transition-all group p-20">
-                      <div className="bg-indigo-50 p-16 rounded-[3rem] mb-12 group-hover:scale-110 transition-transform duration-700">
-                        <svg className="w-20 h-20 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <label className={`flex flex-col items-center justify-center w-full aspect-square border-8 border-dashed rounded-[5rem] cursor-pointer transition-all group p-20 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 hover:bg-slate-800 hover:border-indigo-600' : 'bg-white border-slate-100 hover:bg-indigo-50/20 hover:border-indigo-200'}`}>
+                      <div className={`p-16 rounded-[3rem] mb-12 group-hover:scale-110 transition-transform duration-700 ${theme === 'dark' ? 'bg-slate-800' : 'bg-indigo-50'}`}>
+                        <svg className="w-20 h-20 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
                         </svg>
                       </div>
-                      <p className="text-4xl font-black text-slate-900">{t.studio.import}</p>
-                      <p className="text-2xl text-slate-400 font-medium mt-4">{t.studio.fidelity}</p>
+                      <p className="text-4xl font-black">{t.studio.import}</p>
+                      <p className="text-2xl text-slate-500 font-medium mt-4">{t.studio.fidelity}</p>
                       <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, setSelectedImage)} />
                     </label>
                   )}
@@ -481,12 +549,12 @@ const App: React.FC = () => {
 
               <section className="space-y-12">
                 <div className="space-y-4">
-                  <span className="text-indigo-600 font-black text-2xl tracking-tighter uppercase">{t.studio.step2}</span>
+                  <span className="text-indigo-500 font-black text-2xl tracking-tighter uppercase">{t.studio.step2}</span>
                   <h2 className="text-6xl font-black tracking-tighter">{t.studio.vision}</h2>
                 </div>
-                <div className="flex gap-8 p-4 bg-slate-50 rounded-[3.5rem]">
+                <div className={`flex gap-8 p-4 rounded-[3.5rem] ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'}`}>
                   {(['background', 'avatar'] as const).map((m) => (
-                    <button key={m} onClick={() => setMode(m)} className={`flex-1 py-10 rounded-[3rem] text-2xl font-black transition-all ${mode === m ? 'bg-white text-indigo-600 shadow-2xl scale-[1.02]' : 'text-slate-400 hover:text-slate-600'}`}>
+                    <button key={m} onClick={() => setMode(m)} className={`flex-1 py-10 rounded-[3rem] text-2xl font-black transition-all ${mode === m ? (theme === 'dark' ? 'bg-indigo-600 text-white shadow-2xl' : 'bg-white text-indigo-600 shadow-2xl scale-[1.02]') : 'text-slate-500 hover:text-slate-300'}`}>
                       {m === 'background' ? t.studio.studioPack : t.studio.lifestyle}
                     </button>
                   ))}
@@ -495,7 +563,7 @@ const App: React.FC = () => {
 
               <section className="space-y-12">
                 <div className="space-y-4">
-                  <span className="text-indigo-600 font-black text-2xl tracking-tighter uppercase">{t.studio.step3}</span>
+                  <span className="text-indigo-500 font-black text-2xl tracking-tighter uppercase">{t.studio.step3}</span>
                   <h2 className="text-6xl font-black tracking-tighter">{mode === 'background' ? t.studio.stage : t.studio.cast}</h2>
                 </div>
                 
@@ -506,12 +574,12 @@ const App: React.FC = () => {
                     ))}
                   </div>
                 ) : (
-                  <div className="bg-white rounded-[4rem] p-16 border border-slate-100 shadow-sm space-y-20">
+                  <div className={`rounded-[4rem] p-16 border shadow-sm space-y-20 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                     <div className="space-y-10">
-                      <label className="text-sm font-black text-slate-400 uppercase tracking-[0.4em]">{t.studio.source}</label>
-                      <div className="flex gap-6 p-3 bg-slate-50 rounded-[2.5rem]">
+                      <label className="text-sm font-black text-slate-500 uppercase tracking-[0.4em]">{t.studio.source}</label>
+                      <div className={`flex gap-6 p-3 rounded-[2.5rem] ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-50'}`}>
                         {(['ai', 'custom'] as const).map((s) => (
-                          <button key={s} onClick={() => setCharacterSource(s)} className={`flex-1 py-6 rounded-[2rem] text-xl font-black transition-all ${characterSource === s ? 'bg-white text-indigo-600 shadow-xl scale-[1.02]' : 'text-slate-400 hover:text-slate-600'}`}>
+                          <button key={s} onClick={() => setCharacterSource(s)} className={`flex-1 py-6 rounded-[2rem] text-xl font-black transition-all ${characterSource === s ? (theme === 'dark' ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600 shadow-xl scale-[1.02]') : 'text-slate-500 hover:text-slate-300'}`}>
                             {s === 'ai' ? t.studio.aiModel : t.studio.customImg}
                           </button>
                         ))}
@@ -520,24 +588,24 @@ const App: React.FC = () => {
 
                     {characterSource === 'custom' ? (
                       <div className="space-y-10 animate-in fade-in slide-in-from-top-4 duration-500">
-                        <label className="text-sm font-black text-slate-400 uppercase tracking-[0.4em]">{t.studio.refImg}</label>
+                        <label className="text-sm font-black text-slate-500 uppercase tracking-[0.4em]">{t.studio.refImg}</label>
                         <div className="relative group">
                           {selectedCharacterImage ? (
-                            <div className="relative rounded-[3rem] overflow-hidden aspect-square bg-slate-50 border-4 border-indigo-100 shadow-xl transition-all duration-500 hover:scale-[1.02]">
+                            <div className={`relative rounded-[3rem] overflow-hidden aspect-square border-4 shadow-xl transition-all duration-500 hover:scale-[1.02] ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-indigo-100'}`}>
                               <img src={selectedCharacterImage} alt="Character Reference" className="w-full h-full object-cover" />
-                              <button onClick={() => setSelectedCharacterImage(null)} className="absolute top-8 right-8 bg-white/90 hover:bg-white text-slate-900 p-6 rounded-full shadow-2xl transition-all hover:rotate-90">
+                              <button onClick={() => setSelectedCharacterImage(null)} className={`absolute top-8 right-8 p-6 rounded-full shadow-2xl transition-all hover:rotate-90 ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-white/90 text-slate-900'}`}>
                                 <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
                               </button>
                             </div>
                           ) : (
-                            <label className="flex flex-col items-center justify-center w-full aspect-square border-4 border-dashed border-slate-100 rounded-[3rem] cursor-pointer bg-slate-50 hover:bg-indigo-50/30 hover:border-indigo-200 transition-all group p-12">
-                              <div className="bg-white p-12 rounded-[2rem] mb-8 group-hover:scale-110 transition-transform duration-500 shadow-sm">
-                                <svg className="w-16 h-16 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <label className={`flex flex-col items-center justify-center w-full aspect-square border-4 border-dashed rounded-[3rem] cursor-pointer transition-all group p-12 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 hover:border-indigo-600' : 'bg-slate-50 border-slate-100 hover:border-indigo-200'}`}>
+                              <div className={`p-12 rounded-[2rem] mb-8 group-hover:scale-110 transition-transform duration-500 shadow-sm ${theme === 'dark' ? 'bg-slate-700' : 'bg-white'}`}>
+                                <svg className="w-16 h-16 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
                               </div>
-                              <p className="text-3xl font-black text-slate-900 text-center">{t.studio.refModel}</p>
-                              <p className="text-xl text-slate-400 font-medium mt-3 text-center">{t.studio.clearPhoto}</p>
+                              <p className="text-3xl font-black text-center">{t.studio.refModel}</p>
+                              <p className="text-xl text-slate-500 font-medium mt-3 text-center">{t.studio.clearPhoto}</p>
                               <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, setSelectedCharacterImage)} />
                             </label>
                           )}
@@ -545,10 +613,10 @@ const App: React.FC = () => {
                       </div>
                     ) : (
                       <div className="space-y-10 animate-in fade-in slide-in-from-top-4 duration-500">
-                        <label className="text-sm font-black text-slate-400 uppercase tracking-[0.4em]">{t.studio.identity}</label>
+                        <label className="text-sm font-black text-slate-500 uppercase tracking-[0.4em]">{t.studio.identity}</label>
                         <div className="grid grid-cols-2 gap-8">
                           {(['female', 'male'] as const).map((g) => (
-                            <button key={g} onClick={() => setSelectedGender(g)} className={`py-10 rounded-[2.5rem] font-black text-2xl border-4 transition-all ${selectedGender === g ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-50 text-slate-300'}`}>
+                            <button key={g} onClick={() => setSelectedGender(g)} className={`py-10 rounded-[2.5rem] font-black text-2xl border-4 transition-all ${selectedGender === g ? 'border-indigo-600 bg-indigo-600/10 text-indigo-500' : (theme === 'dark' ? 'border-slate-800 text-slate-600' : 'border-slate-50 text-slate-300')}`}>
                               {lang === 'en' ? g.charAt(0).toUpperCase() + g.slice(1) : (g === 'female' ? 'Femme' : 'Homme')}
                             </button>
                           ))}
@@ -557,10 +625,10 @@ const App: React.FC = () => {
                     )}
 
                     <div className="space-y-10">
-                      <label className="text-sm font-black text-slate-400 uppercase tracking-[0.4em]">{t.studio.atmosphere}</label>
+                      <label className="text-sm font-black text-slate-500 uppercase tracking-[0.4em]">{t.studio.atmosphere}</label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         {getSceneOptions(lang).map((scene) => (
-                          <button key={scene.id} onClick={() => setSelectedScene(scene.id)} className={`flex items-center gap-6 p-8 rounded-[2.5rem] font-bold border-4 transition-all ${selectedScene === scene.id ? 'border-indigo-600 bg-white text-indigo-600 shadow-xl scale-[1.02]' : 'border-slate-50 text-slate-400'}`}>
+                          <button key={scene.id} onClick={() => setSelectedScene(scene.id)} className={`flex items-center gap-6 p-8 rounded-[2.5rem] font-bold border-4 transition-all ${selectedScene === scene.id ? (theme === 'dark' ? 'border-indigo-600 bg-indigo-600/10 text-indigo-500 shadow-xl' : 'border-indigo-600 bg-white text-indigo-600 shadow-xl scale-[1.02]') : (theme === 'dark' ? 'border-slate-800 text-slate-600' : 'border-slate-50 text-slate-400')}`}>
                             <span className="text-5xl">{scene.icon}</span>
                             <span className="text-2xl">{scene.label}</span>
                           </button>
@@ -581,17 +649,12 @@ const App: React.FC = () => {
                 >
                   {t.studio.generate}
                 </Button>
-                {genState.error && (
-                  <div className="mt-10 bg-red-50 p-8 rounded-[2.5rem] border-4 border-red-100 animate-in shake duration-500">
-                    <p className="text-red-500 font-black text-2xl text-center">{genState.error}</p>
-                  </div>
-                )}
               </div>
             </div>
 
             <div className="lg:col-span-7">
               <div className="sticky top-40 space-y-12">
-                <div className="bg-[#0A0B10] rounded-[5rem] p-6 shadow-[0_80px_160px_-40px_rgba(0,0,0,0.4)] overflow-hidden min-h-[850px] flex items-center justify-center relative group border-4 border-slate-900">
+                <div className={`rounded-[5rem] p-6 shadow-[0_80px_160px_-40px_rgba(0,0,0,0.4)] overflow-hidden min-h-[850px] flex items-center justify-center relative group border-4 ${theme === 'dark' ? 'bg-[#05060A] border-slate-900' : 'bg-[#0A0B10] border-slate-900'}`}>
                   {genState.isGenerating ? (
                     <div className="flex flex-col items-center gap-20 animate-in fade-in zoom-in duration-1000">
                       <div className="relative">
@@ -617,8 +680,8 @@ const App: React.FC = () => {
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center text-center p-32 space-y-16 opacity-30">
-                      <div className="bg-slate-900/50 p-24 rounded-[6rem] border-4 border-slate-800 shadow-inner">
-                         <svg className="w-48 h-48 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      <div className={`p-24 rounded-[6rem] border-4 shadow-inner ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-slate-900/50 border-slate-800'}`}>
+                         <svg className={`w-48 h-48 ${theme === 'dark' ? 'text-slate-800' : 'text-slate-700'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                       </div>
                       <div className="space-y-6">
                         <p className="text-white text-6xl font-black tracking-tighter">{t.studio.waiting}</p>
@@ -639,60 +702,6 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
-
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-12">
-          <div className="absolute inset-0 bg-[#0A0B10]/95 backdrop-blur-3xl" onClick={() => !isProcessingPayment && setShowPaymentModal(false)}></div>
-          <div className="relative bg-white w-full max-w-4xl rounded-[5rem] shadow-[0_100px_200px_-40px_rgba(0,0,0,0.5)] p-20 animate-in zoom-in duration-700 overflow-hidden">
-            <div className="flex justify-between items-center mb-16">
-              <div className="flex items-center gap-6">
-                <div className="bg-indigo-600 text-white p-4 rounded-3xl font-black text-2xl tracking-tighter">S|</div>
-                <h3 className="text-5xl font-black tracking-tighter">{t.payment.checkout}</h3>
-              </div>
-              <button onClick={() => !isProcessingPayment && setShowPaymentModal(false)} className="text-slate-200 hover:text-slate-900 p-6 transition-all">
-                <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-20">
-              <div className="space-y-12">
-                <div className="space-y-4">
-                  <p className="text-slate-400 font-black uppercase tracking-widest text-sm">{t.payment.plan}</p>
-                  <p className="text-5xl font-black text-slate-900">{t.payment.premiumPro}</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-7xl font-black text-indigo-600">$19</span>
-                    <span className="text-2xl text-slate-400 font-bold">/ {lang === 'en' ? 'month' : 'mois'}</span>
-                  </div>
-                </div>
-                
-                <div className="space-y-6">
-                  <div className="flex items-center gap-6 text-xl font-bold text-slate-600"><div className="w-3 h-3 bg-indigo-600 rounded-full" />{t.payment.unlimited}</div>
-                  <div className="flex items-center gap-6 text-xl font-bold text-slate-600"><div className="w-3 h-3 bg-indigo-600 rounded-full" />{t.payment.ultraHd}</div>
-                  <div className="flex items-center gap-6 text-xl font-bold text-slate-600"><div className="w-3 h-3 bg-indigo-600 rounded-full" />{t.payment.customChar}</div>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 p-12 rounded-[4rem] border-4 border-slate-100 space-y-10">
-                 <div className="space-y-4">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.payment.cardInfo}</label>
-                    <div className="bg-white px-8 py-6 rounded-[2rem] border-4 border-slate-100 text-xl font-bold text-slate-900 flex items-center justify-between">
-                       <span>4242 4242 4242 4242</span>
-                       <svg className="w-12 h-12 text-slate-200" viewBox="0 0 38 24"><path fill="currentColor" d="M35 0H3C1.3 0 0 1.3 0 3v18c0 1.7 1.3 3 3 3h32c1.7 0 3-1.3 3-3V3c0-1.7-1.3-3-3-3zM14 18.6h-2.9l1.8-11.4h2.9L14 18.6zm13.1-11.1c-1.3-.5-2.2-.8-3.3-.8-3.4 0-5.8 1.8-5.8 4.4 0 1.9 1.7 3 3 3.6.4.2 1.4.6 1.4 1 0 .6-.7.9-1.3.9-1.1 0-1.7-.2-2.7-.6l-.4-.2-.4 2.5c.7.3 2 .6 3.3.6 3.5 0 5.9-1.7 5.9-4.4 0-1.5-.9-2.6-2.9-3.5-.5-.2-.9-.5-.9-.8 0-.3.3-.6.9-.6.5 0 1 .1 1.5.3l.3.1.5-2.6z"/></svg>
-                    </div>
-                 </div>
-                 <div className="grid grid-cols-2 gap-6">
-                    <div className="bg-white px-8 py-6 rounded-[2rem] border-4 border-slate-100 text-xl font-bold text-slate-400">MM / YY</div>
-                    <div className="bg-white px-8 py-6 rounded-[2rem] border-4 border-slate-100 text-xl font-bold text-slate-400">CVC</div>
-                 </div>
-                 <Button onClick={simulateStripeCheckout} isLoading={isProcessingPayment} lang={lang} className="w-full h-24 rounded-[2.5rem] text-2xl shadow-2xl shadow-indigo-100">
-                    {t.payment.payUnlock}
-                 </Button>
-                 <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">{t.payment.secureMsg}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

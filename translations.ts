@@ -10,7 +10,10 @@ export const translations = {
       status: 'Status',
       trial: 'Trial Mode',
       premium: 'Premium Access',
-      identity: 'Identity'
+      identity: 'Identity',
+      theme: 'Theme',
+      light: 'Light',
+      dark: 'Dark'
     },
     auth: {
       signin: 'Sign In',
@@ -66,11 +69,15 @@ export const translations = {
       discounts: 'Discounts',
       logs: 'Logs',
       payments: 'Payments',
+      settings: 'Settings',
       liveUsers: 'Live Users',
       revenue: 'Revenue (All time)',
       generations: 'Generations',
       demoCreds: 'Premium Demo Credentials',
-      demoSub: 'Use these accounts to test premium features from any device.'
+      demoSub: 'Use these accounts to test premium features from any device.',
+      gateway: 'Payment Gateway',
+      gatewaySub: 'Choose the primary processor for customer transactions.',
+      processorActive: 'Current active processor'
     },
     payment: {
       checkout: 'Checkout',
@@ -81,7 +88,10 @@ export const translations = {
       customChar: 'Custom Character Reference',
       cardInfo: 'Card Information',
       payUnlock: 'Pay & Unlock',
-      secureMsg: 'Powered by Stripe • Secured 256-bit'
+      secureMsg: 'Powered by Stripe • Secured 256-bit',
+      payWithPaypal: 'Pay with PayPal',
+      paypalSecure: 'Redirecting to PayPal secure checkout...',
+      paypalMsg: 'The safer, easier way to pay.'
     }
   },
   fr: {
@@ -92,7 +102,10 @@ export const translations = {
       status: 'Statut',
       trial: 'Mode Essai',
       premium: 'Accès Premium',
-      identity: 'Identité'
+      identity: 'Identité',
+      theme: 'Thème',
+      light: 'Clair',
+      dark: 'Sombre'
     },
     auth: {
       signin: 'Connexion',
@@ -148,11 +161,15 @@ export const translations = {
       discounts: 'Remises',
       logs: 'Logs',
       payments: 'Paiements',
+      settings: 'Paramètres',
       liveUsers: 'Utilisateurs Actifs',
       revenue: 'Revenus (Total)',
       generations: 'Générations',
       demoCreds: 'Identifiants Démo Premium',
-      demoSub: 'Utilisez ces comptes pour tester les fonctionnalités premium sur n\'importe quel appareil.'
+      demoSub: 'Utilisez ces comptes pour tester les fonctionnalités premium sur n\'importe quel appareil.',
+      gateway: 'Passerelle de Paiement',
+      gatewaySub: 'Choisissez le processeur principal pour les transactions clients.',
+      processorActive: 'Processeur actif actuel'
     },
     payment: {
       checkout: 'Paiement',
@@ -163,7 +180,10 @@ export const translations = {
       customChar: 'Référence de Personnage Personnalisée',
       cardInfo: 'Informations Carte',
       payUnlock: 'Payer & Débloquer',
-      secureMsg: 'Propulsé par Stripe • Sécurisé 256 bits'
+      secureMsg: 'Propulsé par Stripe • Sécurisé 256 bits',
+      payWithPaypal: 'Payer avec PayPal',
+      paypalSecure: 'Redirection vers le paiement sécurisé PayPal...',
+      paypalMsg: 'Le moyen le plus sûr et le plus simple de payer.'
     }
   }
 };

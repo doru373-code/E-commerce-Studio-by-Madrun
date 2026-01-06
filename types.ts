@@ -9,6 +9,7 @@ export type HairColor = 'black' | 'brown' | 'blonde' | 'red' | 'grey';
 export type Hairstyle = 'short' | 'medium' | 'long' | 'curly' | 'straight' | 'tied';
 export type SkinTone = 'fair' | 'light' | 'medium' | 'tan' | 'deep';
 export type CharacterSource = 'ai' | 'custom';
+export type PaymentProcessor = 'stripe' | 'paypal';
 
 export interface StyleOption {
   id: BackgroundStyle;
@@ -66,4 +67,4 @@ export interface User {
   stripeCustomerId?: string;
 }
 
-export type AdminSubView = 'overview' | 'users' | 'discounts' | 'logs' | 'payments';
+export type AdminSubView = 'overview' | 'users' | 'discounts' | 'logs' | 'payments' | 'settings';
